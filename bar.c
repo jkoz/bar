@@ -12,6 +12,10 @@
 #include <xcb/xinerama.h>
 #include <xcb/randr.h>
 
+#ifdef XBM_SUPPORT
+#include "xbm.c"
+#endif
+
 // Here be dragons
 
 #define max(a,b) ((a) > (b) ? (a) : (b))
@@ -99,6 +103,68 @@ fill_rect (xcb_drawable_t d, xcb_gcontext_t gc, int x, int y, int width, int hei
 {
     xcb_poly_fill_rectangle(c, d, gc, 1, (const xcb_rectangle_t []){ { x, y, width, height } });
 }
+
+#ifdef XBM_SUPPORT
+int
+draw_xbm (monitor_t *mon, char *filename, int x, int align)
+{
+    /* Placeholder for future padding options? */
+    const int padding = 0;
+    x += padding;
+ 
+    xbm_icon_t *icon = open_xbm(filename);
+    if (icon == NULL) {
+        fprintf(stderr, "Warning: Failed opening xbm file '%s'!\n", filename);
+        return 0;
+    }
+
+    switch (align) {
+        case ALIGN_C:
+            xcb_copy_area(c, mon->pixmap, mon->pixmap, gc[GC_DRAW], mon->width / 2 - x / 2, 0,
+                    mon->width / 2 - (x + icon->width + padding * 2) / 2, 0, x, bh);
+            x = mon->width / 2 - (x + icon->width + padding*2) / 2 + x;
+            break;
+        case ALIGN_R:
+            xcb_copy_area(c, mon->pixmap, mon->pixmap, gc[GC_DRAW], mon->width - x, 0,
+                    mon->width - x - icon->width - padding*2, 0, x, bh);
+            x = mon->width - icon->width - padding*2;
+            break;
+    }
+
+    /* Draw the background first */
+    fill_rect(mon->pixmap, gc[GC_CLEAR], x, by, icon->width + padding*2, bh);
+
+    xcb_image_t *img;
+
+    /* Create xcb image */
+    /* connection, w, h, format, depth, base, bytes, data */
+    /* If base == 0 and bytes == ~0 and data == 0 on entry, 
+            no storage will be auto-allocated. */
+    img = xcb_image_create_native(c, icon->width, icon->height, 
+                        XCB_IMAGE_FORMAT_XY_BITMAP, 1, NULL, ~0, NULL);
+    img->data = calloc(1, img->size);
+    if (!img->data) {
+        fprintf(stderr, "Failed to allocate icon data");
+        exit(EXIT_FAILURE);
+    }
+    /* Set img pixels based off stored data */
+    for (int i=0;i < icon->height;i++) {
+        for (int j=0;j < icon->width;j++) {
+            /* Seen alternative equation (width/8 + !!(width%8))*height */
+            /* Haven't seen the purpose yet so haven't added */
+            unsigned pos = (img->width/8)*i + j/8;
+            bool p = icon->data[pos] & (1 << (j%8));
+            xcb_image_put_pixel(img, j, i, p);
+        }
+    }
+
+    /* Draw img and destroy */
+    xcb_image_put(c, mon->pixmap, gc[GC_DRAW], img, x, (bh-icon->height)/2, 0);
+    xcb_image_destroy(img);
+
+    return icon->width + padding*2;
+}
+#endif
 
 int
 draw_char (monitor_t *mon, font_t *cur_font, int x, int align, uint16_t ch)
@@ -322,6 +388,19 @@ select_drawable_font_cache (uint16_t c)
         return select_drawable_font(c);
 }
 
+#ifdef XBM_SUPPORT
+void
+parse_icon(char *p, char *end, char *filename)
+{
+    /* Copy filename and append NULL */
+    const int count = end-p;
+    for (int i=0;i<count;i++) {
+        *filename++ = *p++;
+    }
+    *filename++ = '\0';
+}
+#endif
+
 void
 parse (char *text)
 {
@@ -365,6 +444,20 @@ parse (char *text)
                     case 'c': pos_x = 0; align = ALIGN_C; break;
                     case 'r': pos_x = 0; align = ALIGN_R; break;
 
+                    #ifdef XBM_SUPPORT
+                    case 'I':
+                              if (end-p > MAX_LEN-1) {
+                                  fprintf(stderr, "Warning: Cannot open file, filename too long (max length %i)", MAX_LEN);
+                                  break;
+                              }
+                              /* buffer to hold filename */
+                              char filename[MAX_LEN];
+                              parse_icon(p, end, filename);
+                              int icon_width = draw_xbm(cur_mon, filename, pos_x, align);
+                              pos_x += icon_width;
+                              area_shift(cur_mon->window, align, icon_width);
+                              break;
+                    #endif
                     case 'A':
                               button = XCB_BUTTON_INDEX_1;
                               /* The range is 1-5 */
@@ -824,6 +917,10 @@ xconn (void)
 void
 init (void)
 {
+    #ifdef XBM_SUPPORT
+    xbm_init();
+    #endif
+
     /* Load the fonts */
     for (int i = 0; font_names[i]; i++) {
         font_list[i] = font_load(font_names[i]);
@@ -922,6 +1019,10 @@ init (void)
 void
 cleanup (void)
 {
+    #ifdef XBM_SUPPORT
+    xbm_cleanup();
+    #endif
+    
     for (int i = 0; font_list[i]; i++) {
         xcb_close_font(c, font_list[i]->ptr);
         free(font_list[i]);

@@ -20,9 +20,15 @@ doc: README.pod
 .c.o:
 	${CC} ${CFLAGS} -o $@ -c $<
 
+noxbm: ${OBJS}
+	${CC} -o ${EXEC} ${OBJS} ${LDFLAGS}
+	${STRIP} -s ${EXEC}
+
 ${EXEC}: ${OBJS}
 	${CC} -o ${EXEC} ${OBJS} ${LDFLAGS}
 	${STRIP} -s ${EXEC}
+${EXEC}: CFLAGS += -DXBM_SUPPORT
+${EXEC}: LDFLAGS += -lxcb-image
 
 debug: ${EXEC}
 debug: CC += ${CFDEBUG}
