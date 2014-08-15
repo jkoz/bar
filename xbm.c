@@ -77,8 +77,6 @@ read_xbm_data (FILE *f, const int n, char* info, unsigned char *data)
 
     if (!(lp = strrchr(info, '_')))
         lp = info;
-    /* It is possible that the type will be short instead.
-            This could be improved to support those xbm */
     if (strncmp(lp, "_bits[]", 7) == 0) {
         for (int i=0;i<n;i++) {
             if (i > 0) {
