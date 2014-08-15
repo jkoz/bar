@@ -116,6 +116,12 @@ Nth monitor.
 
 =back
 
+=item B<I>I<file>
+
+Adds an icon. The icon must be xbm format.
+
+Eg. I<%{Iicons/clock.xbm}>
+
 =back
 
 B<Attribute modifiers>
