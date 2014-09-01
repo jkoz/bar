@@ -107,11 +107,7 @@ fill_rect (xcb_drawable_t d, xcb_gcontext_t gc, int x, int y, int width, int hei
 #ifdef XBM_SUPPORT
 int
 draw_xbm (monitor_t *mon, char *filename, int x, int align)
-{
-    /* Placeholder for future padding options? */
-    const int padding = 0;
-    x += padding;
- 
+{ 
     xbm_icon_t *icon = open_xbm(filename);
     if (icon == NULL) {
         fprintf(stderr, "Warning: Failed opening xbm file '%s'!\n", filename);
@@ -121,18 +117,18 @@ draw_xbm (monitor_t *mon, char *filename, int x, int align)
     switch (align) {
         case ALIGN_C:
             xcb_copy_area(c, mon->pixmap, mon->pixmap, gc[GC_DRAW], mon->width / 2 - x / 2, 0,
-                    mon->width / 2 - (x + icon->width + padding * 2) / 2, 0, x, bh);
-            x = mon->width / 2 - (x + icon->width + padding*2) / 2 + x;
+                    mon->width / 2 - (x + icon->width) / 2, 0, x, bh);
+            x = mon->width / 2 - (x + icon->width) / 2 + x;
             break;
         case ALIGN_R:
             xcb_copy_area(c, mon->pixmap, mon->pixmap, gc[GC_DRAW], mon->width - x, 0,
-                    mon->width - x - icon->width - padding*2, 0, x, bh);
-            x = mon->width - icon->width - padding*2;
+                    mon->width - x - icon->width, 0, x, bh);
+            x = mon->width - icon->width;
             break;
     }
 
     /* Draw the background first */
-    fill_rect(mon->pixmap, gc[GC_CLEAR], x, by, icon->width + padding*2, bh);
+    fill_rect(mon->pixmap, gc[GC_CLEAR], x, by, icon->width, bh);
 
     xcb_image_t *img;
 
@@ -152,7 +148,7 @@ draw_xbm (monitor_t *mon, char *filename, int x, int align)
         for (int j=0;j < icon->width;j++) {
             /* Seen alternative equation (width/8 + !!(width%8))*height */
             /* Haven't seen the purpose yet so haven't added */
-            unsigned pos = (img->width/8)*i + j/8;
+            unsigned pos = (img->width/8 + !!(img->width%8))*i + j/8;
             bool p = icon->data[pos] & (1 << (j%8));
             xcb_image_put_pixel(img, j, i, p);
         }
@@ -162,7 +158,7 @@ draw_xbm (monitor_t *mon, char *filename, int x, int align)
     xcb_image_put(c, mon->pixmap, gc[GC_DRAW], img, x, (bh-icon->height)/2, 0);
     xcb_image_destroy(img);
 
-    return icon->width + padding*2;
+    return icon->width;
 }
 #endif
 
@@ -394,9 +390,8 @@ parse_icon(char *p, char *end, char *filename)
 {
     /* Copy filename and append NULL */
     const int count = end-p;
-    for (int i=0;i<count;i++) {
+    for (int i=0;i<count;i++)
         *filename++ = *p++;
-    }
     *filename++ = '\0';
 }
 #endif
@@ -446,12 +441,12 @@ parse (char *text)
 
                     #ifdef XBM_SUPPORT
                     case 'I':
-                              if (end-p > MAX_LEN-1) {
-                                  fprintf(stderr, "Warning: Cannot open file, filename too long (max length %i)", MAX_LEN);
+                              if (end-p > MAX_ICON_ID_LEN-1) {
+                                  fprintf(stderr, "Warning: Cannot open file, filename too long (max length %i)", MAX_ICON_ID_LEN);
                                   break;
                               }
                               /* buffer to hold filename */
-                              char filename[MAX_LEN];
+                              char filename[MAX_ICON_ID_LEN];
                               parse_icon(p, end, filename);
                               int icon_width = draw_xbm(cur_mon, filename, pos_x, align);
                               pos_x += icon_width;
@@ -918,7 +913,7 @@ void
 init (void)
 {
     #ifdef XBM_SUPPORT
-    xbm_init();
+    init_xbm();
     #endif
 
     /* Load the fonts */
@@ -1020,7 +1015,7 @@ void
 cleanup (void)
 {
     #ifdef XBM_SUPPORT
-    xbm_cleanup();
+    cleanup_xbm();
     #endif
     
     for (int i = 0; font_list[i]; i++) {
